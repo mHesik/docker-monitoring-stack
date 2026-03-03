@@ -1,0 +1,47 @@
+version: '3.9'                     # Версия Compose
+
+services:                          # Сервисы (контейнеры)
+  node-exporter:                   # Имя сервиса
+    image: prom/node-exporter:latest # образ
+    container_name: node-exporter  # название контейнера
+    restart: unless-stopped        # всегда перезапускать, только если я сам не остановлю
+    ports:
+      - "9100:9100"                # проброс портов хост == контейнер
+  
+    volumes:                       # вмонтировать хост-директории внутрь контейнера (чтобы видел реал значения, а не метрики контейнера)
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro          # ro = read-only
+      - /:/rootfs:ro
+  
+    command:                       # переопределяем команды запуска контейнера
+      - '--path.procfs=/host/proc' # указываю путь, чтобы не смотрел внутри контейнера
+      - '--path.sysfs=/host/sys'
+      - '--path.rootfs=/rootfs'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($|/)' # исключаем фейковые файловые системы, для чистоты
+
+  prometheus:                      # следующий сервис - сам Prometheus
+    image: prom/prometheus:latest
+    container_name: prometheus     # название контейнера (было contaner_name - хуйня, исправил)
+    restart: unless-stopped
+    ports:
+      - "9090:9090"                # веб-морда prometheus на 9090
+  
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml # монтируем наш конфиг внутрь
+  
+    depends_on:
+      - node-exporter              # Prometheus стартует только после node-exporter
+
+  grafana:                         # сервис графаны
+    image: grafana/grafana:latest
+    container_name: grafana        # название контейнера (было comtainer_name - пиздец, исправил)
+    restart: unless-stopped
+    ports:
+      - "3000:3000"                # прокинуть порты графаны веб интерфейс
+    volumes:
+      - grafana-data:/var/lib/grafana  # данные, дашборды, графики сохраняются
+    depends_on:
+      - prometheus                 # без прометеуса графана бесполезна
+
+volumes:
+  grafana-data:                    # объявляем named volume. без этого после docker compose down данные графаны слетят(((
